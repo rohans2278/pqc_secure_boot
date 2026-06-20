@@ -1,0 +1,30 @@
+[project]
+name = "pqc-boot"
+version = "0.1.0"
+description = "Migrate a Raspberry Pi 5 boot chain from RSA to post-quantum ML-DSA-44 verification."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "rohan" }]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "fabric>=3.2",
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+pqc-boot = "pqc_boot.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pqc_boot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

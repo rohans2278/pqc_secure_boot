@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# pqc-boot working artifacts
+.pqcboot-work/
+*.itb
+*.dtb
+*.bin
+!patches/**
+
+# secrets / keys (never commit private keys)
+keys/
+*.pub
+
+# local config
+pqc-boot.toml
