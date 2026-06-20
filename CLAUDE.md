@@ -162,10 +162,19 @@ tests/
 
 ## Status
 
-Greenfield. Immediate work: (1) scaffold + `doctor`; (2) **reconstruct the clean
-pinned patch**. The PoC U-Boot tree has **no git history**, so reconstruction means
-diffing it against a fresh `v2026.04` clone, isolating the ML-DSA changes, and
-renaming `quboot`→`pqc-boot` into `patches/uboot-2026.04-mldsa44.diff`. The local
-PoC dirs are **read-only reference only** — never a path the tool depends on.
-Migration internals — exact RSA call sites, the mldsa-native vendoring, defconfig,
-FIT/key specifics — live in `docs/*.md` and arrive separately.
+**Done:** scaffold + config/state/context/pipeline; `doctor` (with auto-install);
+the Typer `cli.py` (commands: `migrate`, `doctor`, `generate-patch` — no per-stage or
+`rollback` commands yet; settings are flags-only, no config file); the reconstructed,
+verified pinned patch `patches/uboot-2026.04-mldsa44.diff` (applies to a clean
+`v2026.04` and builds host mkimage); the migration reference `docs/integration.md`;
+and the **`clone` and `keys` stages** (keys vendors mldsa-native into `pqc_boot/_mldsa`
+and compiles a keygen — raw 1312 B pub / 2560 B priv, sign+verify round-trip proven).
+
+**Remaining:** the `patch`/`build`/`sign`/`deploy`/`verify` stage bodies; the
+maintainer `generate-patch` generator (currently reports not-implemented); `rollback`
+(to ship with deploy/verify); per-stage CLI commands; and a real Pi hardware run.
+
+The PoC U-Boot tree has **no git history** and the local PoC dirs are **read-only
+reference only** — never a path the tool depends on. Migration internals — exact RSA
+call sites, the mldsa-native vendoring, defconfig, FIT/key specifics — live in
+`docs/integration.md`.
