@@ -175,11 +175,16 @@ initramfs off the Pi over SSH, generates the FIT `.its` itself, signs with the b
 `mkimage` (no `-K` — build already embedded the pubkey), and self-verifies with
 `fit_check_sign`. The signed `.itb` signature node has no `required` prop — fail-closed
 enforcement lives only in the control DTB. The SSH-fetch path is unverified pending real
-Pi hardware).
+Pi hardware); and the **`deploy` stage** (generates the rebranded `boot.scr`, recomputing
+the `cp.b` length = dtb size and `unzip` src = `0x30000000 +` the FIT kernel-data offset
+parsed from the FDT — never hardcoded; backs up `config.txt`, stages artifacts as NEW
+files, arms Pi one-shot `tryboot`, reboots `"0 tryboot"`. boot.scr gen + derived values
+proven; the live SSH/tryboot/reboot path is unverified pending real Pi).
 
-**Remaining:** the `deploy`/`verify` stage bodies; the
-maintainer `generate-patch` generator (currently reports not-implemented); `rollback`
-(to ship with deploy/verify); per-stage CLI commands; and a real Pi hardware run.
+**Remaining:** the `verify` stage body (reconnect, assert `pqc-boot_verified=1`, promote
+`tryboot.txt`→`config.txt`); the maintainer `generate-patch` generator (currently reports
+not-implemented); `rollback` (ships with verify); per-stage CLI commands; and a real Pi
+hardware run.
 
 The PoC U-Boot tree has **no git history** and the local PoC dirs are **read-only
 reference only** — never a path the tool depends on. Migration internals — exact RSA

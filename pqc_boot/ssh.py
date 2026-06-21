@@ -58,6 +58,40 @@ def fetch(conn: "Connection", remote: str, local: str) -> None:
     conn.get(remote, local)
 
 
+def sudo_checked(conn: "Connection", command: str, *, hide: bool = True):
+    """Run a command under non-interactive sudo (`sudo -n`), raising a clear error
+    if the SSH user lacks passwordless sudo (rather than hanging on a prompt)."""
+    result = run_remote(conn, f"sudo -n {command}", hide=hide)
+    if not result.ok:
+        err = (result.stderr or "").strip()
+        if "password is required" in err or "a terminal is required" in err:
+            raise SSHCommandError(
+                "passwordless sudo required on the Pi for boot-file changes "
+                f"(sudo -n failed): {command!r}"
+            )
+        raise SSHCommandError(
+            f"remote sudo command failed (exit {result.exited}): {command!r}: {err}"
+        )
+    return result
+
+
+def push_root(conn: "Connection", local: str, remote: str,
+              *, staging: str = "/tmp/pqcboot") -> None:
+    """Copy a local file to a root-owned path on the Pi.
+
+    conn.put can't write privileged locations like /boot/firmware, so stage into a
+    user-writable tmp dir, then `sudo -n cp` into place. Requires passwordless sudo
+    for the SSH user (standard on Raspberry Pi OS); fails fast otherwise.
+    """
+    import posixpath
+    import shlex
+
+    staged = posixpath.join(staging, posixpath.basename(remote))
+    run_checked(conn, f"mkdir -p {shlex.quote(staging)}")
+    conn.put(local, staged)
+    sudo_checked(conn, f"cp {shlex.quote(staged)} {shlex.quote(remote)}")
+
+
 def backup_boot(conn: "Connection") -> None:
     """Back up the Pi's existing boot files before any overwrite."""
     raise NotImplementedError("ssh.backup_boot: implement with the deploy stage")

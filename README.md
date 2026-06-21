@@ -58,9 +58,14 @@ build-fixer** (screens every proposed diff, hard-rejects crypto/verify paths, an
 applies only after you confirm); `sign` fetches the kernel/dtb/initramfs off the Pi
 over SSH, generates the FIT `.its` itself, signs with the built `mkimage`, and
 self-verifies the signature with `fit_check_sign` (sign + verify proven locally; the
-SSH fetch path is unverified pending real-Pi hardware).
+SSH fetch path is unverified pending real-Pi hardware); `deploy` generates the
+rebranded `boot.scr` (recomputing the `cp.b` length and `unzip` offset per build —
+no hardcoded addresses), backs up the Pi's `config.txt`, stages the artifacts as new
+files, arms Raspberry Pi one-shot `tryboot`, and reboots (boot.scr generation +
+derived values proven; the live SSH/tryboot/reboot path is unverified pending a real
+Pi).
 
-Not yet implemented: the `deploy` / `verify` stage bodies, the
+Not yet implemented: the `verify` stage body, the
 `generate-patch` generator (currently reports "not implemented"), `rollback`,
 per-stage CLI commands, and a real Pi hardware boot. Running `migrate` today stops at
 the first unimplemented stage.
