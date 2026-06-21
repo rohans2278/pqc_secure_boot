@@ -219,23 +219,69 @@ def request_fix(
     return extract_diff(text)
 
 
-def run_fix_loop(ctx: "Context", *, build_once, gather_context, confirm) -> bool:
-    """Bounded self-correction loop (orchestration — TODO, wired by the build stage).
-
-    Required contract for the implementation:
-      - Show DISCLOSURE before the first request (source goes to Anthropic).
-      - `build_once()` runs make, returns (ok: bool, error: str).
-      - `gather_context(error)` returns {path: excerpt} for the prompt.
-      - For each attempt (up to ctx.config.build_fix_attempts): request_fix, then
-        screen_diff(diff, repo_dir=ctx.uboot_dir). Catch DiffApplyError (the diff
-        won't cleanly apply) and treat it as discard + retry/abort — NEVER let it
-        propagate as a crash. If screen.ok is False, DISCARD the diff (never apply):
-        a diff touching crypto/verify paths is rejected outright.
-      - A screened-ok diff is applied ONLY after confirm(diff, screen) returns True.
-      - Returns True if the build eventually succeeds.
-    """
-    raise NotImplementedError(
-        "build self-correction loop not yet wired: implement with the build stage, "
-        "honoring screen_diff (hard-reject + catch DiffApplyError) + confirm "
-        "(user-approve) before any apply"
+def apply_diff(diff: str, repo_dir, runner=subprocess.run) -> bool:
+    """Apply an already-screened diff to the tree via `git apply`. Returns success."""
+    proc = runner(
+        ["git", "apply", "-"],
+        input=diff, cwd=str(repo_dir), text=True, capture_output=True,
     )
+    return proc.returncode == 0
+
+
+def run_fix_loop(ctx: "Context", *, build_once, gather_context, confirm,
+                 first_error: str) -> bool:
+    """Bounded self-correction loop for a failed U-Boot build.
+
+    Contract (security-critical — enforced here, not by trusting the prompt):
+      - DISCLOSURE is shown once before any source is sent to the Anthropic API.
+      - `first_error` seeds the FIRST iteration, so the loop reuses the failure that
+        triggered it instead of rebuilding immediately (no redundant build).
+      - `build_once()` runs make, returns (ok: bool, error: str); used only AFTER a
+        fix is applied, to check whether it worked and to refresh the error.
+      - `gather_context(error)` returns {path: excerpt} for the prompt.
+      - Each attempt (up to ctx.config.build_fix_attempts): request_fix ->
+        screen_diff(diff, repo_dir=ctx.uboot_dir). A DiffApplyError (won't apply) or
+        a screen failure (crypto/verify/unsafe paths) DISCARDS the diff — it is never
+        applied — and the loop tries again; neither ever propagates as a crash.
+      - A screened-ok diff is applied ONLY after confirm(diff, screen) returns True;
+        a declined fix aborts the loop.
+      - Returns True iff the build eventually succeeds.
+    """
+    ctx.info(DISCLOSURE)
+    error = first_error
+    for attempt in range(1, ctx.config.build_fix_attempts + 1):
+        ctx.info(f"[dim]build-fixer attempt {attempt}/{ctx.config.build_fix_attempts}[/dim]")
+
+        try:
+            diff = request_fix(ctx, error, gather_context(error))
+        except Exception as e:  # network/API failure -> give up cleanly, never crash
+            ctx.warn(f"build-fixer: could not get a fix from Claude ({e}); aborting")
+            return False
+        if not diff:
+            ctx.warn("build-fixer: Claude returned no diff; aborting")
+            return False
+
+        try:
+            screen = screen_diff(diff, repo_dir=ctx.uboot_dir)
+        except DiffApplyError as e:
+            ctx.warn(f"build-fixer: proposed diff does not apply ({e}); discarding")
+            continue
+        if not screen.ok:
+            ctx.warn(f"build-fixer: REJECTED diff ({screen.reason()}); discarding")
+            continue
+
+        if not confirm(diff, screen):
+            ctx.warn("build-fixer: fix not approved; aborting")
+            return False
+
+        if not apply_diff(diff, ctx.uboot_dir):
+            ctx.warn("build-fixer: approved diff failed to apply; discarding")
+            continue
+
+        ok, error = build_once()
+        if ok:
+            ctx.info("[green]✓[/green] build succeeded after AI fix")
+            return True
+
+    ctx.warn("build-fixer: exhausted attempts without a working build")
+    return False
