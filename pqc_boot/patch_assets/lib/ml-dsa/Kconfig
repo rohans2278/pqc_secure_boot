@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0+
+config ML_DSA
+	bool "Use ML-DSA Library"
+	select ML_DSA_VERIFY
+	help
+	  ML-DSA (FIPS 204) support. This enables the ML-DSA-44 algorithm
+	  used for FIT image verification in U-Boot, as a post-quantum
+	  replacement for RSA.
+	  See doc/usage/fit/signature.rst for more details.
+
+config ML_DSA_VERIFY
+	bool
+	help
+	  Add ML-DSA signature verification support.

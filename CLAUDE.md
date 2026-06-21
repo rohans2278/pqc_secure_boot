@@ -164,7 +164,9 @@ pqc_boot/
   ai/
     build_fixer.py       # runtime Claude touchpoint
     patch_generator.py   # maintainer `generate-patch` touchpoint
-  ssh.py  prereqs.py
+  _mldsa/                # vendored mldsa-native core (keys + generate-patch source)
+  patch_assets/          # the 5 U-Boot wrapper files generate-patch assembles
+  ssh.py  prereqs.py  rollback.py
 patches/uboot-2026.04-mldsa44.diff   # the pinned RSA→ML-DSA patch
 docs/
   integration.md         # verbatim RSA→ML-DSA-44 integration reference (feeds generate-patch)
@@ -199,11 +201,17 @@ positive marker — absent marker / unreachable Pi fails without promoting); and
 **`rollback` command** (`pqc_boot/rollback.py` + `pqc-boot rollback`: restore the
 backed-up config.txt, remove tryboot.txt + staged artifacts, reboot to stock). verify
 + rollback logic is unit-tested with a mocked SSH layer; the live SSH/reboot path is
-unverified pending real Pi.
+unverified pending real Pi); and the maintainer **`generate-patch` generator**
+(`pqc_boot/ai/patch_generator.py`: clones a clean `v2026.04`, vendors the mldsa-native
+core from `_mldsa` + the 5 wrappers from `patch_assets` deterministically, uses Claude
+ONLY to locate the 6 RSA edits — each screened to an allowlist of exactly that file —
+then emits the diff and VERIFIES it applies to a fresh tree + builds host mkimage
+before adopting it, gated by `--force`/confirm). Proven end-to-end (clone → assemble →
+apply → cross-build) reproducing the 46-file v2026.04 patch; this reproduces the
+**v2026.04** patch specifically and is NOT yet validated against any other U-Boot tag.
 
-**Remaining:** the maintainer `generate-patch` generator (currently reports
-not-implemented); per-stage CLI commands; and a real Pi hardware run. The migrate
-pipeline is otherwise code-complete.
+**Remaining:** per-stage CLI commands; and a real Pi hardware run. Everything else
+(the full migrate pipeline + rollback + generate-patch) is code-complete.
 
 The PoC U-Boot tree has **no git history** and the local PoC dirs are **read-only
 reference only** — never a path the tool depends on. Migration internals — exact RSA

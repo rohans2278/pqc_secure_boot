@@ -82,9 +82,15 @@ restores the backed-up `config.txt`, removes the staged artifacts, and reboots t
 stock. The verify/rollback live SSH paths are likewise unverified pending real-Pi
 hardware (the decision/command logic is unit-tested with a mocked SSH layer).
 
-Not yet implemented: the `generate-patch` generator (currently reports "not
-implemented"), per-stage CLI commands, and a real Pi hardware boot. The migrate
-pipeline is otherwise code-complete.
+The maintainer **`generate-patch`** generator is also implemented: it clones a clean
+`v2026.04`, vendors the mldsa-native core + the 5 U-Boot wrapper files deterministically,
+uses Claude only to locate the 6 RSA insertion points (each screened to an allowlist of
+exactly that file), then emits the diff and verifies it applies to a fresh tree and
+builds host `mkimage` before adopting it. It reproduces the **v2026.04** patch (proven
+end-to-end, 46-file footprint) — it is not yet validated against other U-Boot versions.
+
+Not yet implemented: per-stage CLI commands and a real Pi hardware boot. Everything
+else is code-complete.
 
 See [docs/integration.md](docs/integration.md) for the exact RSA→ML-DSA-44 migration
 reference.

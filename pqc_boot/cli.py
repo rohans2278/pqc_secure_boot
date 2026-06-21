@@ -211,22 +211,27 @@ def rollback(
 @app.command(name="generate-patch")
 def generate_patch(
     model: str = typer.Option(DEFAULT_MODEL, "--model", help="Claude model to use."),
+    force: bool = typer.Option(
+        False, "--force", help="Adopt the regenerated patch without the confirm prompt."
+    ),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Print actions without writing the patch."
+        False, "--dry-run", help="Print actions without cloning, calling Claude, or writing."
     ),
 ) -> None:
     """MAINTAINER ONLY: (re)generate the pinned RSA→ML-DSA patch via Claude."""
+    from .ai import patch_generator
+
     ctx = _build_context(None, "pi", model, dry_run)
-    not_ready = "generate-patch is not implemented yet (maintainer command)."
     try:
-        from .ai import patch_generator
-    except ImportError:
-        ctx.warn(not_ready)
+        patch_generator.run(ctx, force=force)
+    except subprocess.CalledProcessError as e:
+        cmd = " ".join(e.cmd) if isinstance(e.cmd, (list, tuple)) else str(e.cmd)
+        ctx.warn(f"command failed (exit {e.returncode}): {cmd}")
+        if e.stderr:
+            console.print(e.stderr)
         raise typer.Exit(1)
-    try:
-        patch_generator.run(ctx)  # type: ignore[attr-defined]
-    except (AttributeError, NotImplementedError):
-        ctx.warn(not_ready)
+    except RuntimeError as e:
+        ctx.warn(str(e))
         raise typer.Exit(1)
 
 
