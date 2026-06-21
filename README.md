@@ -39,11 +39,21 @@ pqc-boot rollback          # restore the Pi's stock boot from backup (undo a dep
 pqc-boot generate-patch    # MAINTAINER ONLY: regenerate the pinned RSA→ML-DSA patch via Claude
 ```
 
-Settings come from flags (there is no config file). Common flags on `migrate`:
-`--ip <pi-ip>`, `--user <ssh-user>` (default `pi`), `--from <stage>`, `--force`,
-`--dry-run`, `--model <claude-model>`. `doctor` takes `--ip` and `--yes`.
+Just run `pqc-boot migrate`: it runs the prerequisite check/install for you (no separate
+`doctor` step), and if you didn't pass `--ip` it prompts for the **Pi IP**, **SSH user**
+(default `pi`), and the **Pi sudo password** (entered hidden; leave blank if the Pi has
+passwordless sudo). The sudo password is held in memory for the run only — never written
+to disk, never logged, and passed to `sudo` via stdin (`sudo -S`), never on the command
+line.
 
-`pqc-boot migrate --dry-run` prints what each stage would do without executing.
+Settings can also come from flags for non-interactive use (there is no config file):
+`--ip <pi-ip>`, `--user <ssh-user>`, `--from <stage>`, `--force`, `--dry-run`,
+`--model <claude-model>`. When `--ip` is given (non-interactive), supply the sudo password
+via the `PQCBOOT_SUDO_PASSWORD` env var (never a flag, so it can't leak into `ps`/history);
+omit it to assume passwordless sudo. `doctor` still exists standalone (`--ip`, `--yes`).
+
+`pqc-boot migrate --dry-run` prints what each stage would do without executing (and
+without prompting).
 
 ## Status
 

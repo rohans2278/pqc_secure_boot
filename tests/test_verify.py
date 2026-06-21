@@ -45,19 +45,21 @@ def test_run_without_pi_ip_raises(tmp_path):
 
 def test_run_success_promotes_atomically(tmp_path, monkeypatch):
     ctx = _ctx(tmp_path)
-    sudo: list[str] = []
+    sudo: list[tuple] = []
     monkeypatch.setattr(verify, "_wait_for_pi",
                         lambda c: types.SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(ssh, "read_cmdline", lambda c: f"root=ab {VERIFIED_MARKER}")
     monkeypatch.setattr(ssh, "sudo_checked",
-                        lambda c, cmd, **k: sudo.append(cmd) or types.SimpleNamespace(ok=True))
+                        lambda c, cmd, **k: sudo.append((cmd, k)) or types.SimpleNamespace(ok=True))
 
     verify.run(ctx)
 
-    promote = [c for c in sudo if "tryboot.txt" in c and "config.txt" in c]
+    promote = [(cmd, k) for cmd, k in sudo if "tryboot.txt" in cmd and "config.txt" in cmd]
     assert promote, "expected a promote (tryboot.txt -> config.txt)"
     # atomic: stage to .new then mv into place
-    assert "config.txt.new" in promote[0] and "mv" in promote[0]
+    assert "config.txt.new" in promote[0][0] and "mv" in promote[0][0]
+    # the sudo password is threaded through
+    assert "password" in promote[0][1]
 
 
 def test_run_not_verified_does_not_promote(tmp_path, monkeypatch):

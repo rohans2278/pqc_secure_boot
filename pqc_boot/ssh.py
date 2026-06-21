@@ -32,9 +32,16 @@ def connect(ip: str, user: str = "pi") -> "Connection":
     return Connection(host=ip, user=user)
 
 
-def run_remote(conn: "Connection", command: str, *, hide: bool = True):
-    """Run a command on the Pi. warn=True: failures return (ok=False), not raise."""
-    return conn.run(command, hide=hide, warn=True)
+def run_remote(conn: "Connection", command: str, *, hide: bool = True, in_stream=None):
+    """Run a command on the Pi. warn=True: failures return (ok=False), not raise.
+
+    in_stream, when given, feeds the command's stdin (used to hand sudo a password via
+    `sudo -S` without ever putting it on the command line).
+    """
+    kwargs = {"hide": hide, "warn": True}
+    if in_stream is not None:
+        kwargs["in_stream"] = in_stream
+    return conn.run(command, **kwargs)
 
 
 def run_checked(conn: "Connection", command: str, *, hide: bool = True):
@@ -58,16 +65,33 @@ def fetch(conn: "Connection", remote: str, local: str) -> None:
     conn.get(remote, local)
 
 
-def sudo_checked(conn: "Connection", command: str, *, hide: bool = True):
-    """Run a command under non-interactive sudo (`sudo -n`), raising a clear error
-    if the SSH user lacks passwordless sudo (rather than hanging on a prompt)."""
-    result = run_remote(conn, f"sudo -n {command}", hide=hide)
+def _sudo(conn: "Connection", command: str, password: str | None, hide: bool):
+    """Run `command` under sudo. SECURITY: the password is fed only through stdin
+    (`sudo -S`), never placed in the command string (which is visible in ps/logs).
+    `-p ''` suppresses sudo's prompt. password=None -> non-interactive `sudo -n`."""
+    if password:
+        import io
+
+        return run_remote(conn, f"sudo -S -p '' {command}", hide=hide,
+                          in_stream=io.StringIO(password + "\n"))
+    return run_remote(conn, f"sudo -n {command}", hide=hide)
+
+
+def sudo_checked(conn: "Connection", command: str, *,
+                 password: str | None = None, hide: bool = True):
+    """Run a command under sudo, raising a clear error on failure (wrong password, or
+    no passwordless sudo) instead of hanging on a prompt."""
+    result = _sudo(conn, command, password, hide)
     if not result.ok:
         err = (result.stderr or "").strip()
-        if "password is required" in err or "a terminal is required" in err:
+        if password and ("incorrect password" in err or "try again" in err):
             raise SSHCommandError(
-                "passwordless sudo required on the Pi for boot-file changes "
-                f"(sudo -n failed): {command!r}"
+                f"sudo rejected the password on the Pi (incorrect?): {command!r}"
+            )
+        if not password and ("password is required" in err or "a terminal is required" in err):
+            raise SSHCommandError(
+                "the Pi's sudo needs a password but none was given — run interactively "
+                f"or set PQCBOOT_SUDO_PASSWORD (command: {command!r})"
             )
         raise SSHCommandError(
             f"remote sudo command failed (exit {result.exited}): {command!r}: {err}"
@@ -75,13 +99,20 @@ def sudo_checked(conn: "Connection", command: str, *, hide: bool = True):
     return result
 
 
+def sudo_run(conn: "Connection", command: str, *,
+             password: str | None = None, hide: bool = True):
+    """Like sudo_checked but does NOT raise — for commands whose connection drop is
+    expected (e.g. `reboot`). Password still via stdin only."""
+    return _sudo(conn, command, password, hide)
+
+
 def push_root(conn: "Connection", local: str, remote: str,
-              *, staging: str = "/tmp/pqcboot") -> None:
+              *, password: str | None = None, staging: str = "/tmp/pqcboot") -> None:
     """Copy a local file to a root-owned path on the Pi.
 
     conn.put can't write privileged locations like /boot/firmware, so stage into a
-    user-writable tmp dir, then `sudo -n cp` into place. Requires passwordless sudo
-    for the SSH user (standard on Raspberry Pi OS); fails fast otherwise.
+    user-writable tmp dir, then `sudo cp` into place. Uses the Pi sudo password (via
+    stdin) when supplied, else passwordless `sudo -n`.
     """
     import posixpath
     import shlex
@@ -89,7 +120,8 @@ def push_root(conn: "Connection", local: str, remote: str,
     staged = posixpath.join(staging, posixpath.basename(remote))
     run_checked(conn, f"mkdir -p {shlex.quote(staging)}")
     conn.put(local, staged)
-    sudo_checked(conn, f"cp {shlex.quote(staged)} {shlex.quote(remote)}")
+    sudo_checked(conn, f"cp {shlex.quote(staged)} {shlex.quote(remote)}",
+                 password=password)
 
 
 def backup_boot(conn: "Connection") -> None:

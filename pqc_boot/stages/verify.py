@@ -100,6 +100,7 @@ def run(ctx: "Context") -> None:
             conn,
             f"sh -c 'cp {b}/tryboot.txt {b}/config.txt.new && "
             f"mv {b}/config.txt.new {b}/config.txt'",
+            password=ctx.config.sudo_password,
         )
     finally:
         conn.close()

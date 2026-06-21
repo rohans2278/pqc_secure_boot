@@ -3,10 +3,15 @@
 Deliberately thin: each command parses flags, builds a Context, and delegates to
 pipeline.py / prereqs.py / ai. No migration logic lives here.
 
+A bare `pqc-boot migrate` is interactive — it runs the prerequisite check/install
+itself and prompts for the Pi IP, SSH user, and sudo password — so the user needs no
+flags and no separate `doctor` run. Flags still work for non-interactive use.
+
 (Intentionally does NOT use `from __future__ import annotations` — Typer introspects
 the runtime annotations to build options, and stringized annotations break that.)
 """
 
+import os
 import subprocess
 from typing import Optional
 
@@ -18,6 +23,10 @@ from . import pipeline, prereqs
 from .config import DEFAULT_MODEL, Config
 from .context import Context
 
+# Env var carrying the Pi sudo password for NON-interactive runs (when --ip is given).
+# An env var, never a flag — a flag would expose the password in `ps`/shell history.
+SUDO_PASSWORD_ENV = "PQCBOOT_SUDO_PASSWORD"
+
 app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
@@ -28,10 +37,11 @@ console = Console()
 
 
 def _build_context(
-    ip: Optional[str], user: str, model: str, dry_run: bool
+    ip: Optional[str], user: str, model: str, dry_run: bool,
+    sudo_password: Optional[str] = None,
 ) -> Context:
     """Resolve flags into a Config + Context (the object every stage receives)."""
-    cfg = Config(pi_ip=ip, pi_user=user, model=model)
+    cfg = Config(pi_ip=ip, pi_user=user, model=model, sudo_password=sudo_password)
     return Context.create(cfg, dry_run=dry_run)
 
 
@@ -46,10 +56,54 @@ def _render_checks(checks: list) -> None:
     console.print(table)
 
 
+def _ensure_prereqs(ip: Optional[str], *, assume_yes: bool) -> list:
+    """Check prerequisites, auto-install the fixable ones, and return the checks still
+    failing afterward. Shared by `doctor` and `migrate`. May raise InstallDeclined /
+    PrereqInstallError (callers decide how to react)."""
+    checks = prereqs.check_all(pi_ip=ip)
+    _render_checks(checks)
+
+    def confirm(apt_pkgs: list, pip_pkgs: list) -> bool:
+        if assume_yes:
+            return True
+        parts = []
+        if apt_pkgs:
+            parts.append(f"apt: {', '.join(apt_pkgs)}")
+        if pip_pkgs:
+            parts.append(f"pip: {', '.join(pip_pkgs)}")
+        console.print(f"[yellow]Will install → {'; '.join(parts)}[/yellow]")
+        return typer.confirm("Install them now?")
+
+    actions = prereqs.install_missing(checks, confirm=confirm)
+    if actions:
+        for a in actions:
+            console.print(f"[green]✓[/green] {a}")
+        checks = prereqs.check_all(pi_ip=ip)
+        _render_checks(checks)
+    return [c for c in checks if not c.ok]
+
+
+def _resolve_connection(ip: Optional[str], user: str):
+    """Resolve (ip, user, sudo_password). When --ip is omitted, prompt interactively
+    (the sudo password is read hidden); otherwise stay non-interactive and take the
+    password from the env var. The password is only ever held in memory for this run.
+    """
+    if ip is None:
+        ip = typer.prompt("Raspberry Pi IP address")
+        user = typer.prompt("SSH user", default=user)
+        pw = typer.prompt(
+            "Pi sudo password (leave blank for passwordless sudo)",
+            hide_input=True, default="", show_default=False,
+        ) or None
+    else:
+        pw = os.environ.get(SUDO_PASSWORD_ENV) or None
+    return ip, user, pw
+
+
 @app.command()
 def migrate(
     ip: Optional[str] = typer.Option(
-        None, "--ip", help="Raspberry Pi IP address (needed for deploy/verify)."
+        None, "--ip", help="Raspberry Pi IP address (prompted for if omitted)."
     ),
     user: str = typer.Option("pi", "--user", help="SSH user on the Pi."),
     from_stage: Optional[str] = typer.Option(
@@ -71,7 +125,28 @@ def migrate(
             f"unknown stage '{from_stage}'; valid: {', '.join(pipeline.STAGE_NAMES)}",
             param_hint="--from",
         )
-    ctx = _build_context(ip, user, model, dry_run)
+
+    sudo_password = None
+    if not dry_run:
+        # Resolve the essentials (interactive when --ip is omitted), then fold in the
+        # prerequisite check/install so the user never has to call `doctor` separately.
+        ip, user, sudo_password = _resolve_connection(ip, user)
+        try:
+            failing = _ensure_prereqs(ip, assume_yes=False)
+        except prereqs.InstallDeclined:
+            console.print("[yellow]Prerequisites are required to continue; aborting.[/yellow]")
+            raise typer.Exit(1)
+        except prereqs.PrereqInstallError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+        if failing:
+            console.print(
+                f"[yellow]{len(failing)} prerequisite(s) still failing; continuing "
+                "(some, e.g. the API key, are only needed if a build self-correction "
+                "is triggered).[/yellow]"
+            )
+
+    ctx = _build_context(ip, user, model, dry_run, sudo_password=sudo_password)
     try:
         pipeline.run_pipeline(ctx, force=force, from_stage=from_stage)
     except NotImplementedError as e:
@@ -95,22 +170,8 @@ def doctor(
     ),
 ) -> None:
     """Check host prerequisites (toolchain, deps, API key) and install what's missing."""
-    checks = prereqs.check_all(pi_ip=ip)
-    _render_checks(checks)
-
-    def confirm(apt_pkgs: list, pip_pkgs: list) -> bool:
-        if yes:
-            return True
-        parts = []
-        if apt_pkgs:
-            parts.append(f"apt: {', '.join(apt_pkgs)}")
-        if pip_pkgs:
-            parts.append(f"pip: {', '.join(pip_pkgs)}")
-        console.print(f"[yellow]Will install → {'; '.join(parts)}[/yellow]")
-        return typer.confirm("Install them now?")
-
     try:
-        actions = prereqs.install_missing(checks, confirm=confirm)
+        failing = _ensure_prereqs(ip, assume_yes=yes)
     except prereqs.InstallDeclined:
         console.print("[yellow]Declined; nothing installed.[/yellow]")
         raise typer.Exit(1)
@@ -118,13 +179,6 @@ def doctor(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    if actions:
-        for a in actions:
-            console.print(f"[green]✓[/green] {a}")
-        checks = prereqs.check_all(pi_ip=ip)
-        _render_checks(checks)
-
-    failing = [c for c in checks if not c.ok]
     if failing:
         console.print(
             f"[red]{len(failing)} prerequisite(s) still failing "
@@ -137,14 +191,16 @@ def doctor(
 @app.command()
 def rollback(
     ip: Optional[str] = typer.Option(
-        None, "--ip", help="Raspberry Pi IP address."
+        None, "--ip", help="Raspberry Pi IP address (prompted for if omitted)."
     ),
     user: str = typer.Option("pi", "--user", help="SSH user on the Pi."),
 ) -> None:
     """Restore the Pi's stock boot from backup (undo a deploy/promote) and reboot."""
     from . import rollback as rollback_mod
 
-    ctx = _build_context(ip, user, DEFAULT_MODEL, dry_run=False)
+    ip, user, sudo_password = _resolve_connection(ip, user)
+    ctx = _build_context(ip, user, DEFAULT_MODEL, dry_run=False,
+                         sudo_password=sudo_password)
     try:
         rollback_mod.run(ctx)
     except RuntimeError as e:

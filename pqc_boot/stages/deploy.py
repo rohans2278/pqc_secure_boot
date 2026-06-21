@@ -128,10 +128,12 @@ def run(ctx: "Context") -> None:
     unzip_src = FIT_LOAD_ADDR + _kernel_data_offset(itb)
     ctx.info(f"[dim]derived: cp.b len=0x{dtb_len:x}, unzip src=0x{unzip_src:x}[/dim]")
 
+    pw = ctx.config.sudo_password
     conn = ssh.connect(ctx.config.pi_ip, ctx.config.pi_user)
     try:
-        # Fail fast if the SSH user lacks passwordless sudo, before doing any work.
-        ssh.sudo_checked(conn, "true")
+        # Fail fast if sudo isn't usable (wrong password / password required), before
+        # doing any work.
+        ssh.sudo_checked(conn, "true", password=pw)
 
         # bootargs = the Pi's stock kernel cmdline + the verified marker.
         cmdline = ssh.run_checked(conn, f"cat {BOOT_DIR}/cmdline.txt").stdout.strip()
@@ -151,27 +153,28 @@ def run(ctx: "Context") -> None:
 
         # Back up the stock config.txt (+ any artifacts we'd shadow). -n keeps the
         # first (pristine) backup intact across re-deploys.
-        ssh.sudo_checked(conn, f"mkdir -p {BACKUP_DIR}")
+        ssh.sudo_checked(conn, f"mkdir -p {BACKUP_DIR}", password=pw)
         for name in ("config.txt", "u-boot.bin", DTB_DEPLOY_NAME, "boot.scr",
                      sign.ITB_NAME):
             ssh.sudo_checked(
                 conn,
                 f"sh -c 'test -f {BOOT_DIR}/{name} && cp -n {BOOT_DIR}/{name} "
                 f"{BACKUP_DIR}/{name} || true'",
+                password=pw,
             )
 
         # Stage the new artifacts as NEW files (stock config.txt untouched).
-        ssh.push_root(conn, str(binary), f"{BOOT_DIR}/u-boot.bin")
-        ssh.push_root(conn, str(dtb), f"{BOOT_DIR}/{DTB_DEPLOY_NAME}")
-        ssh.push_root(conn, str(boot_scr), f"{BOOT_DIR}/boot.scr")
-        ssh.push_root(conn, str(itb), f"{BOOT_DIR}/{sign.ITB_NAME}")
+        ssh.push_root(conn, str(binary), f"{BOOT_DIR}/u-boot.bin", password=pw)
+        ssh.push_root(conn, str(dtb), f"{BOOT_DIR}/{DTB_DEPLOY_NAME}", password=pw)
+        ssh.push_root(conn, str(boot_scr), f"{BOOT_DIR}/boot.scr", password=pw)
+        ssh.push_root(conn, str(itb), f"{BOOT_DIR}/{sign.ITB_NAME}", password=pw)
 
         # Arm tryboot: tryboot.txt = config.txt + kernel=u-boot.bin (+ enable_uart).
-        _arm_tryboot(ctx, conn)
+        _arm_tryboot(ctx, conn, pw)
 
         # One-shot tryboot reboot. The connection drops; that's expected.
         ctx.info(f"[dim]$ sudo reboot \"0 tryboot\" ({ctx.config.pi_ip})[/dim]")
-        ssh.run_remote(conn, 'sudo -n reboot "0 tryboot"')
+        ssh.sudo_run(conn, 'reboot "0 tryboot"', password=pw)
     finally:
         conn.close()
 
@@ -179,7 +182,7 @@ def run(ctx: "Context") -> None:
              "run verify to assert pqc-boot_verified=1 and promote")
 
 
-def _arm_tryboot(ctx: "Context", conn) -> None:
+def _arm_tryboot(ctx: "Context", conn, password: str | None) -> None:
     """Write tryboot.txt = stock config.txt with the U-Boot kernel line added."""
     cfg = ssh.run_checked(conn, f"cat {BOOT_DIR}/config.txt").stdout
     lines = cfg.splitlines()
@@ -191,6 +194,6 @@ def _arm_tryboot(ctx: "Context", conn) -> None:
         tf.write(content)
         tmp = tf.name
     try:
-        ssh.push_root(conn, tmp, f"{BOOT_DIR}/tryboot.txt")
+        ssh.push_root(conn, tmp, f"{BOOT_DIR}/tryboot.txt", password=password)
     finally:
         Path(tmp).unlink(missing_ok=True)

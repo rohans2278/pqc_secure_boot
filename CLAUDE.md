@@ -101,6 +101,18 @@ Config is flags-only (no config file): Pi host/user/ssh-key, U-Boot version
 from `ANTHROPIC_API_KEY`. `--dry-run` prints commands/transfers without touching
 the Pi.
 
+**Low-friction `migrate`:** a bare `pqc-boot migrate` folds in the prereq
+check/install (no separate `doctor` run) and, when `--ip` is omitted, prompts
+interactively for Pi IP, SSH user, and the Pi **sudo password** (hidden; blank =
+passwordless). Flags still drive non-interactive runs; the sudo password then comes
+from the `PQCBOOT_SUDO_PASSWORD` env var (never a flag).
+
+**Sudo password handling (security-critical):** held in `Config.sudo_password`
+in-memory for the run ONLY — `field(repr=False)` so it can't leak via a logged repr,
+and never persisted (`state.py` serializes only completed stages). It reaches the Pi
+exclusively via stdin (`ssh._sudo` → `sudo -S -p ''`, password on `in_stream`), NEVER
+in the command string/argv (which `ps`/logs can see). `None` → passwordless `sudo -n`.
+
 ## Safety & rollback (A/B via Raspberry Pi `tryboot`)
 
 Deploy stages the new boot artifacts to the **tryboot** slot and triggers a

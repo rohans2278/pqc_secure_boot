@@ -40,6 +40,13 @@ class Config:
     pi_ip: str | None = None
     pi_user: str = "pi"
 
+    # Pi sudo password for boot-file changes (deploy/verify/rollback). SECURITY:
+    # in-memory only for the duration of the run — never persisted (state.py serializes
+    # only completed stages) and `repr=False` keeps it out of any logged dataclass repr.
+    # Passed to sudo exclusively via stdin (`sudo -S`), never on the command line.
+    # None means "assume passwordless sudo" (sudo -n).
+    sudo_password: str | None = field(default=None, repr=False)
+
     # U-Boot source (hard-pinned; see UBOOT_TAG).
     uboot_repo: str = UBOOT_REPO
     uboot_tag: str = UBOOT_TAG

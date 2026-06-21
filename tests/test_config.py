@@ -21,3 +21,14 @@ def test_keydir_is_fixed_under_workspace():
 def test_uboot_tag_is_hard_pinned():
     # No resolution logic exists; the tag is a constant.
     assert Config().uboot_tag == "v2026.04"
+
+
+def test_sudo_password_defaults_to_none():
+    assert Config().sudo_password is None
+
+
+def test_sudo_password_excluded_from_repr():
+    # SECURITY: the password must never leak via a logged dataclass repr (repr=False).
+    r = repr(Config(pi_ip="10.0.0.5", sudo_password="s3cr3t"))
+    assert "s3cr3t" not in r
+    assert "sudo_password" not in r

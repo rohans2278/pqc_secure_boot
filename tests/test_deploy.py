@@ -69,10 +69,12 @@ def test_deploy_orchestration_order(tmp_path, monkeypatch):
     _stage_fake_artifacts(ctx)
 
     calls: list[tuple] = []
+    seen_kwargs: list[tuple] = []
 
     def rec(name):
         def f(conn, *a, **k):
             calls.append((name, *a))
+            seen_kwargs.append((name, k))
             if name == "run_checked":
                 cmd = a[0]
                 out = ""
@@ -107,8 +109,11 @@ def test_deploy_orchestration_order(tmp_path, monkeypatch):
     assert f"{deploy.BOOT_DIR}/boot.scr" in pushed
     assert f"{deploy.BOOT_DIR}/{sign.ITB_NAME}" in pushed
     assert f"{deploy.BOOT_DIR}/tryboot.txt" in pushed
-    # The one-shot tryboot reboot is issued.
+    # The one-shot tryboot reboot is issued (via sudo_run -> run_remote).
     assert any(c[0] == "run_remote" and 'reboot "0 tryboot"' in c[1] for c in calls)
+    # Every privileged call is threaded the sudo password (None here, but present).
+    assert all("password" in k for n, k in seen_kwargs
+               if n in ("sudo_checked", "push_root"))
 
 
 def _stage_fake_artifacts(ctx: Context) -> None:

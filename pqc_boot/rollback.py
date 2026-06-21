@@ -36,9 +36,10 @@ def run(ctx: "Context") -> None:
     b = deploy.BOOT_DIR
     backup = f"{deploy.BACKUP_DIR}/config.txt"
 
+    pw = ctx.config.sudo_password
     conn = ssh.connect(ctx.config.pi_ip, ctx.config.pi_user)
     try:
-        ssh.sudo_checked(conn, "true")  # fail fast without passwordless sudo
+        ssh.sudo_checked(conn, "true", password=pw)  # fail fast if sudo unusable
 
         if not ssh.run_remote(conn, f"test -f {backup}").ok:
             raise RuntimeError(
@@ -50,13 +51,14 @@ def run(ctx: "Context") -> None:
         ssh.sudo_checked(
             conn,
             f"sh -c 'cp {backup} {b}/config.txt.new && mv {b}/config.txt.new {b}/config.txt'",
+            password=pw,
         )
         # Remove the armed tryboot config + the staged ML-DSA artifacts.
         staged = " ".join(f"{b}/{name}" for name in _STAGED)
-        ssh.sudo_checked(conn, f"rm -f {b}/tryboot.txt {staged}")
+        ssh.sudo_checked(conn, f"rm -f {b}/tryboot.txt {staged}", password=pw)
 
         ctx.info(f"[dim]$ sudo reboot ({ctx.config.pi_ip})[/dim]")
-        ssh.run_remote(conn, "sudo -n reboot")  # connection drop expected
+        ssh.sudo_run(conn, "reboot", password=pw)  # connection drop expected
     finally:
         conn.close()
 
