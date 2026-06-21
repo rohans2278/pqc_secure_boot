@@ -53,6 +53,11 @@ def push(conn: "Connection", local: str, remote: str) -> None:
     conn.put(local, remote)
 
 
+def fetch(conn: "Connection", remote: str, local: str) -> None:
+    """Copy a file from the Pi to the local host (mirror of push)."""
+    conn.get(remote, local)
+
+
 def backup_boot(conn: "Connection") -> None:
     """Back up the Pi's existing boot files before any overwrite."""
     raise NotImplementedError("ssh.backup_boot: implement with the deploy stage")

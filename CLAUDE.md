@@ -165,10 +165,19 @@ the Typer `cli.py` (commands: `migrate`, `doctor`, `generate-patch` — no per-s
 `rollback` commands yet; settings are flags-only, no config file); the reconstructed,
 verified pinned patch `patches/uboot-2026.04-mldsa44.diff` (applies to a clean
 `v2026.04` and builds host mkimage); the migration reference `docs/integration.md`;
-and the **`clone`, `keys`, `patch`, and `build` stages** (keys vendors mldsa-native into `pqc_boot/_mldsa`
-and compiles a keygen — raw 1312 B pub / 2560 B priv, sign+verify round-trip proven).
+and the **`clone`, `keys`, `patch`, `build`, and `sign` stages** (keys vendors mldsa-native
+into `pqc_boot/_mldsa` and compiles a keygen — raw 1312 B pub / 2560 B priv, sign+verify
+round-trip proven; patch applies the pinned diff idempotently; build does the two-pass
+cross-compile and embeds the pubkey via `fdt_add_pubkey -a sha256,mldsa44 -r conf`,
+asserting `algo=sha256,mldsa44` + `required=conf` + 1312 B — proven by a real Pi-5
+cross-compile — with the AI build-fixer wired in on failure; sign fetches kernel/dtb/
+initramfs off the Pi over SSH, generates the FIT `.its` itself, signs with the built
+`mkimage` (no `-K` — build already embedded the pubkey), and self-verifies with
+`fit_check_sign`. The signed `.itb` signature node has no `required` prop — fail-closed
+enforcement lives only in the control DTB. The SSH-fetch path is unverified pending real
+Pi hardware).
 
-**Remaining:** the `sign`/`deploy`/`verify` stage bodies; the
+**Remaining:** the `deploy`/`verify` stage bodies; the
 maintainer `generate-patch` generator (currently reports not-implemented); `rollback`
 (to ship with deploy/verify); per-stage CLI commands; and a real Pi hardware run.
 
