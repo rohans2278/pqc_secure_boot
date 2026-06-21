@@ -92,6 +92,7 @@ injection is the Pi-5-specific reason it works in practice.
 ```
 pqc-boot doctor            # check host prereqs: aarch64 toolchain, ssh reach, API key, deps
 pqc-boot migrate           # run the full pipeline (clone → … → verify)
+pqc-boot rollback          # restore the backed-up stock boot (undo a deploy/promote) + reboot
 pqc-boot generate-patch    # MAINTAINER ONLY: Claude locates RSA → regenerates the pinned diff
 ```
 
@@ -161,8 +162,8 @@ tests/
 ## Status
 
 **Done:** scaffold + config/state/context/pipeline; `doctor` (with auto-install);
-the Typer `cli.py` (commands: `migrate`, `doctor`, `generate-patch` — no per-stage or
-`rollback` commands yet; settings are flags-only, no config file); the reconstructed,
+the Typer `cli.py` (commands: `migrate`, `doctor`, `rollback`, `generate-patch` — no
+per-stage commands yet; settings are flags-only, no config file); the reconstructed,
 verified pinned patch `patches/uboot-2026.04-mldsa44.diff` (applies to a clean
 `v2026.04` and builds host mkimage); the migration reference `docs/integration.md`;
 and the **`clone`, `keys`, `patch`, `build`, and `sign` stages** (keys vendors mldsa-native
@@ -179,12 +180,18 @@ Pi hardware); and the **`deploy` stage** (generates the rebranded `boot.scr`, re
 the `cp.b` length = dtb size and `unzip` src = `0x30000000 +` the FIT kernel-data offset
 parsed from the FDT — never hardcoded; backs up `config.txt`, stages artifacts as NEW
 files, arms Pi one-shot `tryboot`, reboots `"0 tryboot"`. boot.scr gen + derived values
-proven; the live SSH/tryboot/reboot path is unverified pending real Pi).
+proven; the live SSH/tryboot/reboot path is unverified pending real Pi); the **`verify`
+stage** (reconnects after tryboot, asserts `pqc-boot_verified=1` as a whole token in
+/proc/cmdline, atomically promotes `tryboot.txt`→`config.txt` via stage+`mv` ONLY on a
+positive marker — absent marker / unreachable Pi fails without promoting); and the
+**`rollback` command** (`pqc_boot/rollback.py` + `pqc-boot rollback`: restore the
+backed-up config.txt, remove tryboot.txt + staged artifacts, reboot to stock). verify
++ rollback logic is unit-tested with a mocked SSH layer; the live SSH/reboot path is
+unverified pending real Pi.
 
-**Remaining:** the `verify` stage body (reconnect, assert `pqc-boot_verified=1`, promote
-`tryboot.txt`→`config.txt`); the maintainer `generate-patch` generator (currently reports
-not-implemented); `rollback` (ships with verify); per-stage CLI commands; and a real Pi
-hardware run.
+**Remaining:** the maintainer `generate-patch` generator (currently reports
+not-implemented); per-stage CLI commands; and a real Pi hardware run. The migrate
+pipeline is otherwise code-complete.
 
 The PoC U-Boot tree has **no git history** and the local PoC dirs are **read-only
 reference only** — never a path the tool depends on. Migration internals — exact RSA

@@ -35,6 +35,7 @@ This installs the `pqc-boot` console script and the dev/test deps.
 ```
 pqc-boot doctor            # check host prereqs (toolchain, deps, API key) + install missing
 pqc-boot migrate           # run the pipeline: clone → keys → patch → build → sign → deploy → verify
+pqc-boot rollback          # restore the Pi's stock boot from backup (undo a deploy/promote) + reboot
 pqc-boot generate-patch    # MAINTAINER ONLY: regenerate the pinned RSA→ML-DSA patch via Claude
 ```
 
@@ -63,12 +64,17 @@ rebranded `boot.scr` (recomputing the `cp.b` length and `unzip` offset per build
 no hardcoded addresses), backs up the Pi's `config.txt`, stages the artifacts as new
 files, arms Raspberry Pi one-shot `tryboot`, and reboots (boot.scr generation +
 derived values proven; the live SSH/tryboot/reboot path is unverified pending a real
-Pi).
+Pi); `verify` reconnects after the tryboot reboot, asserts `pqc-boot_verified=1` is
+present as a whole token in `/proc/cmdline`, and only then atomically promotes
+`tryboot.txt`→`config.txt` (stage-and-`mv`); an absent marker or an unreachable Pi
+fails without promoting (the firmware has already reverted to stock). `rollback`
+restores the backed-up `config.txt`, removes the staged artifacts, and reboots to
+stock. The verify/rollback live SSH paths are likewise unverified pending real-Pi
+hardware (the decision/command logic is unit-tested with a mocked SSH layer).
 
-Not yet implemented: the `verify` stage body, the
-`generate-patch` generator (currently reports "not implemented"), `rollback`,
-per-stage CLI commands, and a real Pi hardware boot. Running `migrate` today stops at
-the first unimplemented stage.
+Not yet implemented: the `generate-patch` generator (currently reports "not
+implemented"), per-stage CLI commands, and a real Pi hardware boot. The migrate
+pipeline is otherwise code-complete.
 
 See [docs/integration.md](docs/integration.md) for the exact RSA→ML-DSA-44 migration
 reference.

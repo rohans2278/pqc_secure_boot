@@ -134,6 +134,24 @@ def doctor(
     console.print("[green]All prerequisites satisfied.[/green]")
 
 
+@app.command()
+def rollback(
+    ip: Optional[str] = typer.Option(
+        None, "--ip", help="Raspberry Pi IP address."
+    ),
+    user: str = typer.Option("pi", "--user", help="SSH user on the Pi."),
+) -> None:
+    """Restore the Pi's stock boot from backup (undo a deploy/promote) and reboot."""
+    from . import rollback as rollback_mod
+
+    ctx = _build_context(ip, user, DEFAULT_MODEL, dry_run=False)
+    try:
+        rollback_mod.run(ctx)
+    except RuntimeError as e:
+        ctx.warn(str(e))
+        raise typer.Exit(1)
+
+
 @app.command(name="generate-patch")
 def generate_patch(
     model: str = typer.Option(DEFAULT_MODEL, "--model", help="Claude model to use."),
