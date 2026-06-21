@@ -92,12 +92,10 @@ injection is the Pi-5-specific reason it works in practice.
 ```
 pqc-boot doctor            # check host prereqs: aarch64 toolchain, ssh reach, API key, deps
 pqc-boot migrate           # run the full pipeline (clone → … → verify)
-pqc-boot <stage>           # run one stage (clone|keys|patch|build|sign|deploy|verify)
-pqc-boot rollback          # restore the backed-up RSA boot / un-promote a tryboot slot
 pqc-boot generate-patch    # MAINTAINER ONLY: Claude locates RSA → regenerates the pinned diff
 ```
 
-Config via `pqc-boot.toml` + flag overrides: Pi host/user/ssh-key, U-Boot version
+Config is flags-only (no config file): Pi host/user/ssh-key, U-Boot version
 (default pinned `2026.04`), defconfig, keydir, A/B slot, workspace path. API key
 from `ANTHROPIC_API_KEY`. `--dry-run` prints commands/transfers without touching
 the Pi.
@@ -167,10 +165,10 @@ the Typer `cli.py` (commands: `migrate`, `doctor`, `generate-patch` — no per-s
 `rollback` commands yet; settings are flags-only, no config file); the reconstructed,
 verified pinned patch `patches/uboot-2026.04-mldsa44.diff` (applies to a clean
 `v2026.04` and builds host mkimage); the migration reference `docs/integration.md`;
-and the **`clone` and `keys` stages** (keys vendors mldsa-native into `pqc_boot/_mldsa`
+and the **`clone`, `keys`, `patch`, and `build` stages** (keys vendors mldsa-native into `pqc_boot/_mldsa`
 and compiles a keygen — raw 1312 B pub / 2560 B priv, sign+verify round-trip proven).
 
-**Remaining:** the `patch`/`build`/`sign`/`deploy`/`verify` stage bodies; the
+**Remaining:** the `sign`/`deploy`/`verify` stage bodies; the
 maintainer `generate-patch` generator (currently reports not-implemented); `rollback`
 (to ship with deploy/verify); per-stage CLI commands; and a real Pi hardware run.
 

@@ -48,14 +48,19 @@ Settings come from flags (there is no config file). Common flags on `migrate`:
 
 Implemented and tested: the CLI, host `doctor`, the pinned patch
 `patches/uboot-2026.04-mldsa44.diff` (verified to apply to a clean `v2026.04` and
-build host `mkimage`), and the **`clone`** and **`keys`** stages (keys generates the
-raw ML-DSA-44 keypair — 1312 B public / 2560 B private — via vendored mldsa-native,
-proven with a sign+verify round-trip).
+build host `mkimage`), and the **`clone`**, **`keys`**, **`patch`**, and **`build`**
+stages. `keys` generates the raw ML-DSA-44 keypair (1312 B public / 2560 B private)
+via vendored mldsa-native, proven with a sign+verify round-trip; `patch` applies the
+pinned diff idempotently; `build` does the two-pass cross-compile, embeds the pubkey
+into the control DTB (`algo=sha256,mldsa44`, `required=conf`, 1312 B — verified by a
+real Pi-5 cross-compile), and on a build failure invokes the **AI build-fixer**
+(screens every proposed diff, hard-rejects crypto/verify paths, and applies only
+after you confirm).
 
-Not yet implemented: the `patch` / `build` / `sign` / `deploy` / `verify` stage
-bodies, the `generate-patch` generator (currently reports "not implemented"),
-`rollback`, per-stage CLI commands, and a real Pi hardware run. Running `migrate`
-today stops at the first unimplemented stage.
+Not yet implemented: the `sign` / `deploy` / `verify` stage bodies, the
+`generate-patch` generator (currently reports "not implemented"), `rollback`,
+per-stage CLI commands, and a real Pi hardware boot. Running `migrate` today stops at
+the first unimplemented stage.
 
 See [docs/integration.md](docs/integration.md) for the exact RSA→ML-DSA-44 migration
 reference.
